@@ -1,0 +1,397 @@
+#!/usr/bin/env python3
+"""
+Qualitative Fingerprint System
+Uses clinical descriptors instead of numeric measurements
+Matches how radiologists actually think and report
+"""
+
+import google.generativeai as genai
+import base64
+import json
+import os
+from pathlib import Path
+from typing import Dict, Optional, List
+from dotenv import load_dotenv
+import pandas as pd
+from PIL import Image
+from datetime import datetime
+
+load_dotenv()
+
+class QualitativeFingerprintSystem:
+    def __init__(self):
+        genai.configure(api_key=os.getenv('GOOGLE_API_KEY'))
+        self.client = genai.GenerativeModel('gemini-2.5-flash')
+        # Use Windows path format when running on Windows
+        if os.name == 'nt':  # Windows
+            self.base_path = r"C:\Users\smith\Medical Imaging\archive (4)"
+        else:  # Linux/WSL
+            self.base_path = "/mnt/c/Users/smith/Medical Imaging/archive (4)"
+        self.metadata_file = os.path.join(self.base_path, "Data_Entry_2017_sizing.csv")
+        self.metadata_df = pd.read_csv(self.metadata_file)
+        
+    def get_image_metadata(self, image_filename: str) -> Optional[Dict]:
+        """Get metadata for specific image from CSV"""
+        row = self.metadata_df[self.metadata_df['Image Index'] == image_filename]
+        if row.empty:
+            return None
+        
+        # Get CSV original dimensions and pixel spacing
+        csv_width = int(row.iloc[0]['OriginalImage[Width'])
+        csv_height = int(row.iloc[0]['Height]'])
+        csv_pixel_spacing_x = float(row.iloc[0]['OriginalImagePixelSpacing[x'])
+        csv_pixel_spacing_y = float(row.iloc[0]['y]'])
+        
+        # Get actual image dimensions
+        image_number = int(image_filename.split('_')[0])
+        folder_number = str((image_number // 1000) + 1).zfill(3)
+        image_path = os.path.join(self.base_path, f"images_{folder_number}", "images", image_filename)
+        
+        from PIL import Image
+        with Image.open(image_path) as img:
+            actual_width, actual_height = img.size
+        
+        # Calculate resize ratios
+        width_ratio = csv_width / actual_width
+        height_ratio = csv_height / actual_height
+        
+        # Adjust pixel spacing for resize
+        effective_pixel_spacing_x = csv_pixel_spacing_x * width_ratio
+        effective_pixel_spacing_y = csv_pixel_spacing_y * height_ratio
+            
+        return {
+            'filename': image_filename,
+            'patient_id': int(row.iloc[0]['Patient ID']),
+            'age': int(row.iloc[0]['Patient Age']),
+            'gender': str(row.iloc[0]['Patient Gender']),
+            'view': str(row.iloc[0]['View Position']),
+            'width': actual_width,
+            'height': actual_height,
+            'pixel_spacing_x': effective_pixel_spacing_x,
+            'pixel_spacing_y': effective_pixel_spacing_y,
+            'real_width_mm': float(csv_width * csv_pixel_spacing_x),
+            'real_height_mm': float(csv_height * csv_pixel_spacing_y),
+            'image_path': image_path
+        }
+    
+    def build_qualitative_fingerprint_prompt(self, metadata: Dict) -> str:
+        """Build qualitative fingerprint prompt using evidence-first methodology"""
+        return f"""You are an expert radiologist's most technologically advanced medical tool. The radiologist uses you to do deeper scans of x-rays to see if you find anything slightly different than them. You are simply adding some additional context to a busy radiologist's workflow.
+
+You are creating a QUALITATIVE DIAGNOSTIC FINGERPRINT for this chest X-ray. You have a knack for detail and consider multiple possibilities when confirming a question about the X-Ray. Remember first and foremost, DO NO HARM.
+
+**IMAGE SPECIFICATIONS:**
+- Patient: {metadata['age']}yr {metadata['gender']}, {metadata['view']} view
+- Image dimensions: 1024×1024 pixels (all images normalized to this size)
+
+**🔍 HIGH LEVEL SCAN - OVERVIEW FIRST 🔍**
+**HIGH_LEVEL_SCAN:** Before proceeding with systematic assessment, scan the entire image for significant findings. Look specifically for: 1) Pneumothorax (black areas where lung should be, collapsed lung edges, pleural lines), 2) cardiomegaly (enlarged of chest width), 3) mid to large pleural effusions (white fluid levels), 4) Tension pneumothorax (mediastinal shift), 5) Massive consolidation/white-out. If ANY significant findings are present, STATE THEM IMMEDIATELY before proceeding, else proceed.
+
+** THIS IS A HIGH EFFORT, HIGH THINKING ENVIRONMENT
+
+**CRITICAL ANTI-HALLUCINATION INSTRUCTIONS:**
+1. **EVIDENCE FIRST**: For each assessment, describe ONLY what you visually observe
+2. **NO ASSUMPTIONS**: If findings are inconclusive or uncertain, state "Findings inconclusive"
+3. **INDEPENDENT ASSESSMENT**: Assess each feature (F1-F15) completely independently - do not let earlier findings bias later assessments
+4. **NO LOCK-IN**: Do not force findings to be consistent with each other - real pathology can have mixed patterns
+5. **CONSERVATIVE BIAS**: When uncertain, lean toward normal rather than abnormal findings
+6. **NO CLINICAL LEAPS**: Do not infer diagnoses beyond what is directly visible
+
+**CONFIDENCE SCORING INSTRUCTIONS:**
+- Use confidence scores from 6.0 to 10.0 in increments of 0.1 (e.g., 6.3, 7.7, 8.9, 9.4)
+- Base confidence on image quality, finding clarity, and diagnostic certainty:
+  * 6.0-6.9: Lower confidence due to image quality issues or borderline findings
+  * 7.0-7.9: Moderate confidence with some uncertainty
+  * 8.0-8.9: Good confidence with clear findings
+  * 9.0-9.9: High confidence with very clear findings
+  * 10.0: Perfect confidence with absolutely clear, unambiguous findings
+
+**CARDIAC ASSESSMENT (F1-F3):**
+**F1: Heart Size Assessment**
+**F1_EVIDENCE:** Measure the cardiac silhouette at its widest point relative to the chest width. Normal cardiothoracic ratio is <50% on PA films. Be conservative - only call enlarged if clearly >50% or if the heart border approaches the chest wall. Consider patient positioning and inspiration level.
+
+**F1_FINDING:** Based *only* on evidence above:
+F1a: [Y/N] F1a_CONF: [6.0-10.0] F1b: [healthy/borderline/concerning] F1b_CONF: [6.0-10.0]
+
+**F2: Heart Chamber Pattern**
+**F2_EVIDENCE:** Describe any specific cardiac chamber prominence visible in the image. Look for left atrial prominence (straightening of left heart border), left ventricular rounding (displaced apex), or right heart enlargement (prominent right border). Assess each chamber independently regardless of overall heart size.
+
+**F2_FINDING:** Based *only* on evidence above:
+F2a: [Y/N] F2a_CONF: [6.0-10.0] F2b: [none/left_atrial/left_ventricular/right_sided/biventricular/global] F2b_CONF: [6.0-10.0]
+
+**F3: Heart Border Clarity**
+**F3_EVIDENCE:** Describe the clarity of heart borders independent of heart size. Focus only on border definition - are the edges sharp and well-defined or blurred? Do not reference previous findings about enlargement.
+
+**F3_FINDING:** Based *only* on evidence above:
+F3a: [Y/N] F3a_CONF: [6.0-10.0] F3b: [sharp/mildly_blurred/moderately_blurred/severely_blurred/silhouette_sign] F3b_CONF: [6.0-10.0]
+
+**AIRWAY ASSESSMENT (F4-F6):**
+**F4: Tracheal Position**
+**F4_EVIDENCE:** Describe the tracheal position relative to the midline. Note if it appears centered or deviated to either side.
+
+**F4_FINDING:** Based *only* on evidence above:
+F4a: [Y/N] F4a_CONF: [6.0-10.0] F4b: [midline/mild_left/mild_right/moderate_left/moderate_right/severe_left/severe_right] F4b_CONF: [6.0-10.0]
+
+**F5: Carina Visibility**
+**F5_EVIDENCE:** Describe the visibility and sharpness of the carina. The carina should appear as a sharp, well-defined point where the trachea bifurcates. Only call it blurred if truly obscured by pathology or poor image quality.
+
+**F5_FINDING:** Based *only* on evidence above:
+F5a: [Y/N] F5a_CONF: [6.0-10.0] F5b: [sharp/mildly_blurred/moderately_blurred/severely_blurred/obscured] F5b_CONF: [6.0-10.0]
+
+**F6: Bronchial Markings**
+**F6_EVIDENCE:** Describe the prominence of bronchial markings extending from the hilum toward the periphery. Normal markings extend about 2/3 into the lung fields. Only consider them increased if they extend beyond normal limits or appear thickened. Avoid over-calling normal vascular markings as increased bronchial markings.
+
+**F6_FINDING:** Based *only* on evidence above:
+F6a: [Y/N] F6a_CONF: [6.0-10.0] F6b: [normal/mildly_increased/moderately_increased/markedly_increased] F6b_CONF: [6.0-10.0]
+
+**BREATHING ASSESSMENT (F7-F9):**
+**F7: Lung Pattern**
+**F7_EVIDENCE:** Describe the overall lung opacity patterns in both lung fields. Look for normal clear lungs, increased interstitial markings, consolidation, ground-glass opacities, pulmonary edema patterns, or infiltrates. Compare both lungs systematically from apex to base. If bilateral infiltrates are present, describe the pattern and distribution.
+
+**F7_FINDING:** Based *only* on evidence above:
+F7a: [Y/N] F7a_CONF: [6.0-10.0] F7b: [clear/increased_markings/consolidation/ground_glass/pulmonary_edema/mixed_pattern] F7b_CONF: [6.0-10.0]
+
+**F8: Pleural Space**
+**F8_EVIDENCE:** Describe any abnormalities in the pleural spaces including effusions, pneumothorax, or pleural thickening. Look for costophrenic angle blunting, pleural fluid layering, or visible pleural lines.
+
+**F8_FINDING:** Based *only* on evidence above:
+F8a: [Y/N] F8a_CONF: [6.0-10.0] F8b: [normal/effusion/pneumothorax/thickening/multiple_abnormalities] F8b_CONF: [6.0-10.0]
+
+**F9: Lung Expansion**
+**F9_EVIDENCE:** Describe the degree of lung expansion, inspiratory effort, and any volume differences between lung fields. Note diaphragm positioning, rib expansion, and whether both lungs appear adequately inflated. If expansion appears adequate and symmetric, state "Lung expansion adequate and symmetric."
+
+**F9_FINDING:** Based *only* on evidence above:
+F9a: [Y/N] F9a_CONF: [6.0-10.0] F9b: [excellent/adequate/suboptimal/asymmetric/poor_inspiration] F9b_CONF: [6.0-10.0]
+
+**DIAPHRAGM ASSESSMENT (F10-F12):**
+**F10: Diaphragm Height**
+**F10_EVIDENCE:** Describe the relative heights of the left and right hemidiaphragms. Note if they appear at similar levels or if one is elevated.
+
+**F10_FINDING:** Based *only* on evidence above:
+F10a: [Y/N] F10a_CONF: [6.0-10.0] F10b: [equal/minimal/mild/moderate/marked] F10b_CONF: [6.0-10.0]
+
+**F11: Left Costophrenic Angle**
+**F11_EVIDENCE:** Describe the appearance of the left costophrenic angle. Note if it appears sharp and acute or blunted.
+
+**F11_FINDING:** Based *only* on evidence above:
+F11a: [Y/N] F11a_CONF: [6.0-10.0] F11b: [sharp/mildly_blunted/moderately_blunted/completely_blunted] F11b_CONF: [6.0-10.0]
+
+**F12: Right Costophrenic Angle**
+**F12_EVIDENCE:** Describe the appearance of the right costophrenic angle. Note if it appears sharp and acute or blunted.
+
+**F12_FINDING:** Based *only* on evidence above:
+F12a: [Y/N] F12a_CONF: [6.0-10.0] F12b: [sharp/mildly_blunted/moderately_blunted/completely_blunted] F12b_CONF: [6.0-10.0]
+
+**EVERYTHING ELSE (F13-F15):**
+**F13: Rib Fracture Assessment**
+**F13_EVIDENCE:** Describe the rib integrity. Look for any discontinuities, fracture lines, or displacement.
+
+**F13_FINDING:** Based *only* on evidence above:
+F13a: [Y/N] F13a_CONF: [6.0-10.0] F13b: [none/single/few/multiple/extensive] F13b_CONF: [6.0-10.0]
+
+**F14: Medical Device Assessment**
+**F14_EVIDENCE:** Examine the entire image for any artificial medical devices. Look specifically for: 1) Pacemaker/ICD generators (rectangular white densities in upper chest), 2) Pacemaker leads (thin white wires extending to heart), 3) Central lines or catheters (linear densities), 4) Orthopedic hardware (plates, screws, joints), 5) Surgical clips or wires, 6) Endotracheal tubes, 7) Nasogastric tubes. Describe any visible devices by location and type.
+
+**F14_FINDING:** Based *only* on evidence above:
+F14a: [Y/N] F14a_CONF: [6.0-10.0] F14b: [none/pacemaker/lines_tubes/orthopedic/surgical_clips/multiple_devices] F14b_CONF: [6.0-10.0]
+
+**F15: Image Quality Assessment**
+**F15_EVIDENCE:** Describe the technical quality of the image including penetration, positioning, and clarity.
+
+**F15_FINDING:** Based *only* on evidence above:
+F15a: [Y/N] F15a_CONF: [6.0-10.0] F15b: [excellent/good/adequate/suboptimal/poor/nondiagnostic] F15b_CONF: [6.0-10.0]
+
+**FINAL_CHECK:** Review all findings for obvious contradictions only. Each assessment should be based solely on visual evidence for that specific feature. Do not force findings to align with each other. State "Consistent" if no obvious contradictions exist.
+
+**OVERALL CLINICAL IMPRESSION (F0):**
+**F0_EVIDENCE:** Based *only* on the specific evidence documented above in F1-F15, provide a brief clinical summary. Do not add new observations or inferences beyond what was already documented.
+
+**F0_FINDING:** [2-3 sentence clinical summary based strictly on documented evidence above]
+
+**OUTPUT FORMAT:**
+SUGGESTED FOLLOW UP: [Suggested follow up, or "not needed"]
+F1_EVIDENCE: [evidence description]
+F1a:[Y/N] F1a_CONF:[6.0-10.0] F1b:[descriptor] F1b_CONF:[6.0-10.0]
+F2_EVIDENCE: [evidence description]  
+F2a:[Y/N] F2a_CONF:[6.0-10.0] F2b:[descriptor] F2b_CONF:[6.0-10.0]
+[Continue for F3-F15...]
+FINAL_CHECK: [consistency assessment]
+F0: [clinical summary]"""
+
+    def process_qualitative_fingerprint(self, image_filename: str) -> Dict:
+        """Process image with single comprehensive qualitative fingerprint call"""
+        
+        start_time = datetime.now()
+        
+        # Get metadata
+        metadata = self.get_image_metadata(image_filename)
+        if not metadata:
+            raise ValueError(f"Metadata not found for {image_filename}")
+        
+        # Load and encode image
+        with open(metadata['image_path'], 'rb') as f:
+            image_data = base64.b64encode(f.read()).decode('utf-8')
+        
+        print(f"🔬 Processing qualitative fingerprint for {image_filename}...")
+        
+        # Build comprehensive prompt
+        prompt = self.build_qualitative_fingerprint_prompt(metadata)
+        
+        # Make single API call
+        import PIL.Image
+        import io
+        
+        # Convert base64 to PIL Image for Gemini
+        image_bytes = base64.b64decode(image_data)
+        image = PIL.Image.open(io.BytesIO(image_bytes))
+        
+        response = self.client.generate_content(
+            [prompt, image],
+            generation_config=genai.types.GenerationConfig(
+                max_output_tokens=2000,
+                temperature=0.2,
+            )
+        )
+        
+        processing_time = (datetime.now() - start_time).total_seconds() * 1000
+        
+        # Parse response
+        response_text = response.text
+        parsed_measurements = self.parse_qualitative_fingerprint(response_text)
+        
+        # Build result
+        result = {
+            "image_filename": image_filename,
+            "timestamp": start_time.isoformat(),
+            "processing_time_ms": processing_time,
+            "model": "gemini-2.5-flash",
+            "input_tokens": response.usage_metadata.prompt_token_count if hasattr(response, 'usage_metadata') else 0,
+            "output_tokens": response.usage_metadata.candidates_token_count if hasattr(response, 'usage_metadata') else 0,
+            "metadata": metadata,
+            "qualitative_measurements": parsed_measurements,
+            "raw_response": response_text,
+            "measurement_method": "qualitative_fingerprint_single_call"
+        }
+        
+        # Save result
+        image_name = image_filename.replace('.png', '')
+        if os.name == 'nt':  # Windows
+            output_path = rf"C:\Users\smith\Medical Imaging\pattern_responses\qualitative_fingerprints\images_001\{image_name}.json"
+        else:  # Linux/WSL
+            output_path = f"/mnt/c/Users/smith/Medical Imaging/pattern_responses/qualitative_fingerprints/images_001/{image_name}.json"
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+        
+        with open(output_path, 'w') as f:
+            json.dump(result, f, indent=2)
+        
+        print(f"✅ Qualitative fingerprint complete!")
+        print(f"📊 Measurements parsed: {len(parsed_measurements)}/15 pairs")
+        total_tokens = (result["input_tokens"] + result["output_tokens"])
+        print(f"💰 Cost: ${total_tokens/1000 * 0.005:.3f}")  # Claude pricing estimate
+        print(f"📁 Saved: {output_path}")
+        
+        return result
+    
+    
+    def parse_qualitative_fingerprint(self, response_text: str) -> Dict:
+        """Parse qualitative fingerprint response with evidence-first format"""
+        import re
+        
+        measurements = {}
+        
+        # Extract F0 (clinical impression)
+        f0_match = re.search(r'F0:\s*(.+?)(?=\n|$)', response_text, re.DOTALL)
+        if f0_match:
+            measurements['F0'] = {
+                "value": f0_match.group(1).strip(),
+                "type": "clinical_impression"
+            }
+        
+        # Extract evidence descriptions
+        evidence_pattern = r'F(\d+)_EVIDENCE:\s*(.+?)(?=\n\n|F\d+_FINDING:|$)'
+        evidence_matches = re.findall(evidence_pattern, response_text, re.DOTALL)
+        
+        for match in evidence_matches:
+            f_num, evidence_text = match
+            measurements[f"F{f_num}_EVIDENCE"] = {
+                "value": evidence_text.strip(),
+                "type": "evidence"
+            }
+        
+        # Parse findings - handles both binary and qualitative values
+        pattern = r'F(\d+)([ab]):\s*([YN]|\w+)\s+F\d+[ab]_CONF:\s*(\d+\.?\d*)'
+        matches = re.findall(pattern, response_text)
+        
+        for match in matches:
+            f_num, sub_type, value, confidence = match
+            key = f"F{f_num}{sub_type}"
+            
+            measurements[key] = {
+                "value": value,
+                "confidence": float(confidence),
+                "type": "binary" if sub_type == 'a' else "qualitative"
+            }
+        
+        # Extract FINAL_CHECK
+        final_check_match = re.search(r'FINAL_CHECK:\s*(.+?)(?=\n|$)', response_text, re.DOTALL)
+        if final_check_match:
+            measurements['FINAL_CHECK'] = {
+                "value": final_check_match.group(1).strip(),
+                "type": "consistency_check"
+            }
+        
+        return measurements
+
+def main():
+    """Test qualitative fingerprint system"""
+    import sys
+    
+    if len(sys.argv) != 2:
+        print("Usage: python qualitative_fingerprint_system.py <image_id>")
+        print("Example: python qualitative_fingerprint_system.py 00000001_000.png")
+        sys.exit(1)
+    
+    image_id = sys.argv[1]
+    if not image_id.endswith('.png'):
+        image_id += '.png'
+    
+    system = QualitativeFingerprintSystem()
+    
+    try:
+        result = system.process_qualitative_fingerprint(image_id)
+        
+        # Show summary
+        measurements = result["qualitative_measurements"]
+        binary_count = len([m for m in measurements.values() if m.get("type") == "binary"])
+        qual_count = len([m for m in measurements.values() if m.get("type") == "qualitative"])
+        
+        print(f"\n📈 QUALITATIVE FINGERPRINT SUMMARY:")
+        print(f"✅ Binary decisions: {binary_count}")
+        print(f"📊 Qualitative assessments: {qual_count}")
+        print(f"🎯 Total measurements: {len(measurements)}")
+        
+        # Show clinical impression
+        if "F0" in measurements:
+            print(f"\n📋 CLINICAL IMPRESSION:")
+            print(f"{measurements['F0']['value']}")
+        
+        # Show key cardiac findings
+        if "F7a" in measurements and "F7b" in measurements:
+            cardiomegaly = measurements["F7a"]["value"]
+            cardiac_size = measurements["F7b"]["value"]
+            print(f"\n💓 CARDIAC ASSESSMENT:")
+            print(f"   Enlarged: {cardiomegaly}")
+            print(f"   Size: {cardiac_size}")
+            
+            if "F8a" in measurements and "F8b" in measurements:
+                chamber_pattern = measurements["F8b"]["value"]
+                print(f"   Pattern: {chamber_pattern}")
+        
+    except Exception as e:
+        print(f"❌ Qualitative fingerprint failed for {image_id}: {e}")
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
+
+if __name__ == "__main__":
+    main()

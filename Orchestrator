@@ -1,0 +1,339 @@
+#!/usr/bin/env python3
+"""
+Fast ABCDE Orchestrator - Parallel API calls with 200ms staggered delays
+Fires all 25 API calls in rapid succession instead of sequential processing
+"""
+
+import asyncio
+import os
+import sys
+import json
+import time
+import base64
+from pathlib import Path
+from datetime import datetime
+import anthropic
+from dotenv import load_dotenv
+import pandas as pd
+from PIL import Image
+import concurrent.futures
+
+# Import all component prompts
+from airway_prompts import get_airway_prompt
+from breathing_prompts import get_breathing_prompt
+from cardiac_prompts import get_cardiac_prompt
+from diaphragm_prompts import get_diaphragm_prompt
+from everything_else_prompts import get_everything_else_prompt
+
+# Load environment variables
+load_dotenv()
+
+# Configure Claude
+client = anthropic.Anthropic(api_key=os.getenv('ANTHROPIC_API_KEY'))
+
+class FastABCDEOrchestrator:
+    def __init__(self, delay_ms=200):
+        """Initialize orchestrator with configurable delay between calls"""
+        self.delay_ms = delay_ms
+        # Cross-platform path handling
+        if os.name == 'nt':  # Windows
+            self.base_path = r"C:\Users\smith\Medical Imaging\archive (4)"
+        else:  # Linux/WSL
+            self.base_path = "/mnt/c/Users/smith/Medical Imaging/archive (4)"
+        self.metadata_file = os.path.join(self.base_path, "Data_Entry_2017_sizing.csv")
+        self.metadata_df = pd.read_csv(self.metadata_file)
+        
+    def get_image_metadata(self, image_filename):
+        """Get image metadata from CSV"""
+        row = self.metadata_df[self.metadata_df['Image Index'] == image_filename]
+        if row.empty:
+            return None
+        
+        # Get CSV original dimensions and pixel spacing
+        csv_width = int(row.iloc[0]['OriginalImage[Width'])
+        csv_height = int(row.iloc[0]['Height]'])
+        csv_pixel_spacing_x = float(row.iloc[0]['OriginalImagePixelSpacing[x'])
+        csv_pixel_spacing_y = float(row.iloc[0]['y]'])
+        
+        # Get actual image dimensions
+        image_number = int(image_filename.split('_')[0])
+        folder_number = str((image_number // 1000) + 1).zfill(3)
+        image_path = os.path.join(self.base_path, f"images_{folder_number}", "images", image_filename)
+        
+        with Image.open(image_path) as img:
+            actual_width, actual_height = img.size
+        
+        # Calculate resize ratios
+        width_ratio = csv_width / actual_width
+        height_ratio = csv_height / actual_height
+        
+        # Adjust pixel spacing for resize
+        effective_pixel_spacing_x = csv_pixel_spacing_x * width_ratio
+        effective_pixel_spacing_y = csv_pixel_spacing_y * height_ratio
+        
+        return {
+            'width': actual_width,
+            'height': actual_height,
+            'pixel_spacing_x': effective_pixel_spacing_x,
+            'pixel_spacing_y': effective_pixel_spacing_y,
+            'patient_age': int(row.iloc[0]['Patient Age']),
+            'patient_gender': str(row.iloc[0]['Patient Gender']),
+            'view_position': str(row.iloc[0]['View Position']),
+            'image_path': image_path
+        }
+    
+    def get_scaling_info(self, metadata):
+        """Generate scaling info for prompts"""
+        if not metadata:
+            return "No scaling information available"
+        
+        pixel_spacing = metadata['pixel_spacing_x']
+        real_width_mm = metadata['width'] * pixel_spacing
+        real_height_mm = metadata['height'] * pixel_spacing
+        
+        return f"""**CRITICAL MEASUREMENT SCALING:**
+- Pixel spacing: {pixel_spacing:.3f}mm per pixel
+- Image dimensions: {metadata['width']}×{metadata['height']} pixels
+- Real chest dimensions: {real_width_mm:.0f}mm × {real_height_mm:.0f}mm
+- Patient: {metadata['patient_age']}yr {metadata['patient_gender']}, {metadata['view_position']} view"""
+
+    def make_single_api_call(self, image_data, prompt, call_id, delay_ms):
+        """Make a single API call with staggered timing"""
+        # Apply staggered delay
+        if delay_ms > 0:
+            time.sleep(delay_ms / 1000.0)
+        
+        try:
+            start_time = time.time()
+            response = client.messages.create(
+                model="claude-sonnet-4-20250514",
+                max_tokens=500,
+                temperature=0.1,
+                messages=[{
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": "image/png",
+                                "data": image_data
+                            }
+                        },
+                        {
+                            "type": "text",
+                            "text": prompt
+                        }
+                    ]
+                }]
+            )
+            processing_time = (time.time() - start_time) * 1000
+            
+            # Extract response
+            response_text = response.content[0].text.strip()
+            
+            return {
+                "call_id": call_id,
+                "processing_time_ms": processing_time,
+                "input_tokens": response.usage.input_tokens,
+                "output_tokens": response.usage.output_tokens,
+                "response": response_text,
+                "success": True
+            }
+            
+        except Exception as e:
+            return {
+                "call_id": call_id,
+                "error": str(e),
+                "processing_time_ms": 0,
+                "success": False
+            }
+
+    def process_fast_abcde(self, image_path, output_base_dir):
+        """Process all 25 ABCDE calls in parallel with staggered delays"""
+        print(f"\n{'#'*60}")
+        print(f"🚀 FAST ABCDE ANALYSIS - PARALLEL PROCESSING")
+        print(f"📸 Image: {Path(image_path).name}")
+        print(f"⏱️  Delay between calls: {self.delay_ms}ms")
+        print(f"📊 Total calls: 25 (5 components × 5 calls each)")
+        print(f"{'#'*60}")
+        
+        # Get metadata and scaling info
+        image_filename = Path(image_path).name
+        metadata = self.get_image_metadata(image_filename)
+        if not metadata:
+            raise ValueError(f"No metadata found for {image_filename}")
+        
+        scaling_info = self.get_scaling_info(metadata)
+        
+        # Load and encode image once
+        with open(image_path, 'rb') as f:
+            image_data = base64.b64encode(f.read()).decode('utf-8')
+        
+        # Use the base directory directly with descriptive filenames
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        image_name = Path(image_path).stem
+        output_dir = output_base_dir  # Don't create subdirectory
+        os.makedirs(output_dir, exist_ok=True)
+        
+        # Prepare all 25 API calls
+        components = [
+            ("airway", get_airway_prompt),
+            ("breathing", get_breathing_prompt),
+            ("cardiac", get_cardiac_prompt),
+            ("diaphragm", get_diaphragm_prompt),
+            ("everything_else", get_everything_else_prompt)
+        ]
+        
+        # Build all prompts and call configurations
+        api_calls = []
+        call_counter = 0
+        
+        for component_name, prompt_getter in components:
+            for call_num in range(1, 6):  # 5 calls per component
+                prompt = prompt_getter(call_num, scaling_info)
+                call_id = f"{component_name}_call_{call_num}"
+                delay_ms = call_counter * self.delay_ms  # Staggered delays
+                
+                api_calls.append({
+                    'image_data': image_data,
+                    'prompt': prompt,
+                    'call_id': call_id,
+                    'delay_ms': delay_ms,
+                    'component': component_name,
+                    'call_num': call_num
+                })
+                call_counter += 1
+        
+        print(f"🔥 Firing {len(api_calls)} API calls with {self.delay_ms}ms stagger...")
+        
+        # Execute all API calls in parallel using ThreadPoolExecutor
+        start_time = time.time()
+        all_results = {}
+        
+        with concurrent.futures.ThreadPoolExecutor(max_workers=25) as executor:
+            # Submit all calls
+            future_to_call = {
+                executor.submit(
+                    self.make_single_api_call,
+                    call_config['image_data'],
+                    call_config['prompt'],
+                    call_config['call_id'],
+                    call_config['delay_ms']
+                ): call_config for call_config in api_calls
+            }
+            
+            # Collect results as they complete
+            completed_count = 0
+            total_tokens_in = 0
+            total_tokens_out = 0
+            
+            for future in concurrent.futures.as_completed(future_to_call):
+                call_config = future_to_call[future]
+                component = call_config['component']
+                
+                if component not in all_results:
+                    all_results[component] = {
+                        "component": component,
+                        "calls": {}
+                    }
+                
+                try:
+                    result = future.result()
+                    all_results[component]["calls"][call_config['call_id']] = result
+                    
+                    if result['success']:
+                        total_tokens_in += result.get('input_tokens', 0)
+                        total_tokens_out += result.get('output_tokens', 0)
+                        completed_count += 1
+                        print(f"✅ {result['call_id']} - {result['processing_time_ms']:.0f}ms ({result.get('input_tokens', 0)}+{result.get('output_tokens', 0)} tokens)")
+                    else:
+                        print(f"❌ {result['call_id']} - {result['error']}")
+                        
+                except Exception as e:
+                    print(f"❌ {call_config['call_id']} - Exception: {str(e)}")
+        
+        total_time = time.time() - start_time
+        
+        # Save all results with descriptive filenames
+        for component_name, component_data in all_results.items():
+            output_path = os.path.join(output_dir, f"{image_name}_{component_name}_{timestamp}.json")
+            with open(output_path, 'w') as f:
+                json.dump(component_data, f, indent=2)
+        
+        # Calculate summary
+        summary = {
+            "image_path": image_path,
+            "timestamp": timestamp,
+            "total_processing_time_seconds": total_time,
+            "total_api_calls": len(api_calls),
+            "successful_calls": completed_count,
+            "total_input_tokens": total_tokens_in,
+            "total_output_tokens": total_tokens_out,
+            "total_tokens": total_tokens_in + total_tokens_out,
+            "estimated_cost": (total_tokens_in + total_tokens_out) / 1000 * 0.005,
+            "output_directory": output_dir,
+            "delay_ms": self.delay_ms
+        }
+        
+        # Save summary with descriptive filename
+        summary_path = os.path.join(output_dir, f"{image_name}_summary_{timestamp}.json")
+        with open(summary_path, 'w') as f:
+            json.dump(summary, f, indent=2)
+        
+        # Print summary
+        print(f"\n{'='*60}")
+        print(f"🚀 FAST ABCDE ANALYSIS COMPLETE")
+        print(f"{'='*60}")
+        print(f"⏱️  Total time: {total_time:.1f} seconds (vs {len(api_calls)}+ seconds sequential)")
+        print(f"📊 Successful calls: {completed_count}/{len(api_calls)}")
+        print(f"🔢 Total tokens: {total_tokens_in:,} in + {total_tokens_out:,} out = {total_tokens_in + total_tokens_out:,}")
+        print(f"💰 Estimated cost: ${summary['estimated_cost']:.3f}")
+        print(f"⚡ Speed improvement: {len(api_calls)/total_time:.1f}x faster than sequential")
+        print(f"📁 Results saved to: {output_dir}")
+        
+        return all_results, summary
+
+def main():
+    """Main entry point"""
+    if len(sys.argv) < 2:
+        print("Usage: python fast_abcde_orchestrator.py <image_filename> [delay_ms]")
+        print("Example: python fast_abcde_orchestrator.py 00000001_000.png 200")
+        sys.exit(1)
+    
+    image_filename = sys.argv[1]
+    if not image_filename.endswith('.png'):
+        image_filename += '.png'
+    
+    # Optional delay parameter (default 200ms)
+    delay_ms = int(sys.argv[2]) if len(sys.argv) > 2 else 200
+    
+    # Find the image with cross-platform paths
+    image_number = int(image_filename.split('_')[0])
+    folder_number = str((image_number // 1000) + 1).zfill(3)
+    if os.name == 'nt':  # Windows
+        image_path = rf"C:\Users\smith\Medical Imaging\archive (4)\images_{folder_number}\images\{image_filename}"
+        output_dir = r"C:\Users\smith\Medical Imaging\abcde_results"
+    else:  # Linux/WSL
+        image_path = f"/mnt/c/Users/smith/Medical Imaging/archive (4)/images_{folder_number}/images/{image_filename}"
+        output_dir = "/mnt/c/Users/smith/Medical Imaging/abcde_results"
+    
+    if not os.path.exists(image_path):
+        print(f"❌ Image not found: {image_path}")
+        sys.exit(1)
+    
+    # Create orchestrator and process
+    orchestrator = FastABCDEOrchestrator(delay_ms=delay_ms)
+    
+    try:
+        all_results, summary = orchestrator.process_fast_abcde(image_path, output_dir)
+        print(f"\n🎉 Success! All 25 calls completed in {summary['total_processing_time_seconds']:.1f}s")
+        print(f"📈 That's a {25/summary['total_processing_time_seconds']:.1f}x speedup vs sequential!")
+    except Exception as e:
+        print(f"\n❌ Fatal error: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
+
+if __name__ == "__main__":
+    main()

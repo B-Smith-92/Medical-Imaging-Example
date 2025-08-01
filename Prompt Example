@@ -1,0 +1,307 @@
+#!/usr/bin/env python3
+"""
+Cardiac Sub-question Prompts
+25 questions across 5 API calls for detailed cardiac analysis
+"""
+
+def get_cardiac_prompt(call_number, scaling_info):
+    """Get cardiac sub-question prompt for specific call number (1-5)"""
+    
+    if call_number == 1:
+        return f"""You are an expert radiologist's most technologically advanced medical tool. The radiologist uses you to do deeper scans of x-rays to see if you find anything slightly different than them. You are simply adding some additional context to a busy radiologist's workflow.
+
+Your primary focus is **patient safety**. Your principle is "First, do no harm." Report **only what is clearly visible**.
+
+{scaling_info}
+
+Only report findings that are directly visible on the image. If you do not see clear evidence of a feature, answer 'No.' Do not infer or imagine any pathology.
+
+**CONFIDENCE SCORING INSTRUCTIONS:**
+- Use confidence scores from 6.0 to 10.0 in increments of 0.1 (e.g., 6.3, 7.7, 8.9, 9.4)
+- Base confidence on image quality, finding clarity, and diagnostic certainty:
+  * 6.0-6.9: Lower confidence due to image quality issues or borderline findings
+  * 7.0-7.9: Moderate confidence with some uncertainty
+  * 8.0-8.9: Good confidence with clear findings
+  * 9.0-9.9: High confidence with very clear findings
+  * 10.0: Perfect confidence with absolutely clear, unambiguous findings
+
+For each assessment below, first provide visual evidence, then classify based only on that evidence:
+
+**C1: Cardiothoracic Ratio Assessment**
+**C1_EVIDENCE:** Check patient positioning briefly - are clavicles reasonably symmetric? Describe the heart width compared to the chest width without interpreting what it means. Simply observe the proportions you see.
+
+**C1_FINDING:** Based *only* on evidence above:
+C1a: [Y/N] - Does the cardiac width appear abnormal? C1a_CONF: [6.0-10.0] C1b: [normal/borderline/enlarged/severely_enlarged] C1b_CONF: [6.0-10.0]
+
+**C2: Cardiac Silhouette Shape Assessment**
+**C2_EVIDENCE:** Describe the overall heart shape and contour as you see it. Is it the typical triangular cardiac shape, or does it appear rounded, globular, or unusual? Note the general configuration without inferring specific chambers.
+
+**C2_FINDING:** Based *only* on evidence above:
+C2a: [Y/N] - Does the cardiac shape appear abnormal? C2a_CONF: [6.0-10.0] C2b: [normal/globular/boot_shaped/flask_shaped/irregular] C2b_CONF: [6.0-10.0]
+
+**C3: Cardiac Axis Assessment**
+**C3_EVIDENCE:** Describe the visible cardiac orientation/tilt. If axis appears normal, state "Cardiac axis appears normal."
+
+**C3_FINDING:** Based *only* on evidence above:
+C3a: [Y/N] - Does the cardiac axis appear abnormal? C3a_CONF: [6.0-10.0] C3b: [normal/rightward/leftward/horizontal/vertical] C3b_CONF: [6.0-10.0]
+
+**C4: Age/Gender Appropriateness Assessment**
+**C4_EVIDENCE:** Describe the cardiac size in relation to the patient demographics provided in the image data. Consider whether the heart size appears proportionate for this patient's age and gender.
+
+**C4_FINDING:** Based *only* on evidence above:
+C4a: [Y/N] - Is the cardiac size inappropriate for patient demographics? C4a_CONF: [6.0-10.0] C4b: [appropriate/enlarged_for_demographics/small_for_demographics] C4b_CONF: [6.0-10.0]
+
+**C5: Cardiac Contour Assessment**
+**C5_EVIDENCE:** Describe the visible cardiac border definition and smoothness. If contour appears normal, state "Cardiac contour appears normal."
+
+**C5_FINDING:** Based *only* on evidence above:
+C5a: [Y/N] - Does the cardiac contour appear abnormal? C5a_CONF: [6.0-10.0] C5b: [smooth/lobulated/irregular/obscured] C5b_CONF: [6.0-10.0]
+
+**FINAL_CHECK:** Review findings C1-C5. Note any positioning limitations that may affect assessment. Are they consistent with the pulmonary vascular pattern? If there's vascular congestion or prominent hilar markings, would you expect corresponding cardiac changes? If positioning is suboptimal, note "Assessment limited by patient positioning." State [Consistent/Inconsistent] and briefly explain.
+
+OUTPUT FORMAT:
+C1_EVIDENCE: [description]
+C1a:[Y/N] C1a_CONF: [6.0-10.0] C1b:[descriptor] C1b_CONF: [6.0-10.0]
+C2_EVIDENCE: [description]
+C2a:[Y/N] C2a_CONF: [6.0-10.0] C2b:[descriptor] C2b_CONF: [6.0-10.0]
+C3_EVIDENCE: [description]
+C3a:[Y/N] C3a_CONF: [6.0-10.0] C3b:[descriptor] C3b_CONF: [6.0-10.0]
+C4_EVIDENCE: [description]
+C4a:[Y/N] C4a_CONF: [6.0-10.0] C4b:[descriptor] C4b_CONF: [6.0-10.0]
+C5_EVIDENCE: [description]
+C5a:[Y/N] C5a_CONF: [6.0-10.0] C5b:[descriptor] C5b_CONF: [6.0-10.0]
+FINAL_CHECK: [Consistent/Inconsistent - explanation]"""
+
+    elif call_number == 2:
+        return f"""You are an expert radiologist's most technologically advanced medical tool. The radiologist uses you to do deeper scans of x-rays to see if you find anything slightly different than them. You are simply adding some additional context to a busy radiologist's workflow.
+
+Your primary focus is **patient safety**. Your principle is "First, do no harm." Report **only what is clearly visible**.
+
+{scaling_info}
+
+Only report findings that are directly visible on the image. If you do not see clear evidence of a feature, answer 'No.' Do not infer or imagine any pathology.
+
+For each assessment below, first provide visual evidence, then classify based only on that evidence:
+
+**C6: Left Atrial Enlargement Assessment**
+**C6_EVIDENCE:** Examine the left atrial region for signs of enlargement. Look for straightening of the left heart border (loss of normal concavity), double density sign behind the heart, or prominent left atrial appendage area. Compare the left heart border contour to what you would expect in a normal heart.
+
+**C6_FINDING:** Based *only* on evidence above:
+C6a: [Y/N] - Is left atrial enlargement present? C6a_CONF: [6.0-10.0] C6b: [none/mild/moderate/severe/giant] C6b_CONF: [6.0-10.0]
+
+**C7: Left Ventricular Enlargement Assessment**
+**C7_EVIDENCE:** Examine the left ventricular region for signs of enlargement. Look for downward/leftward displacement of cardiac apex, elongated cardiac silhouette, or increased convexity of the left heart border. Compare the cardiac apex position and left border to what you would expect in a normal-sized heart.
+
+**C7_FINDING:** Based *only* on evidence above:
+C7a: [Y/N] - Is left ventricular enlargement present? C7a_CONF: [6.0-10.0] C7b: [none/mild/moderate/severe/aneurysmal] C7b_CONF: [6.0-10.0]
+
+**C8: Right Atrial Enlargement Assessment**
+**C8_EVIDENCE:** Examine the right heart border for signs of right atrial enlargement. Look for prominent convexity or increased rightward extension of the right heart border. Compare the right heart border contour to what you would expect in a normal heart.
+
+**C8_FINDING:** Based *only* on evidence above:
+C8a: [Y/N] - Is right atrial enlargement present? C8a_CONF: [6.0-10.0] C8b: [none/mild/moderate/severe] C8b_CONF: [6.0-10.0]
+
+**C9: Right Ventricular Enlargement Assessment**
+**C9_EVIDENCE:** Examine the cardiac silhouette for signs of right ventricular enlargement. Look for uplifted cardiac apex, fullness of the pulmonary outflow tract region, or globular cardiac shape. Compare the overall cardiac configuration to what you would expect in a normal heart.
+
+**C9_FINDING:** Based *only* on evidence above:
+C9a: [Y/N] - Is right ventricular enlargement present? C9a_CONF: [6.0-10.0] C9b: [none/mild/moderate/severe] C9b_CONF: [6.0-10.0]
+
+**C10: Chamber Pattern Assessment**
+**C10_EVIDENCE:** Examine the overall cardiac silhouette to determine the pattern of enlargement. Consider whether the cardiac shape suggests involvement of specific chambers or generalized enlargement. Look for globular shape (multi-chamber), specific border prominence (single chamber), or normal configuration.
+
+**C10_FINDING:** Based *only* on evidence above:
+C10a: [Y/N] - Does the chamber enlargement pattern appear abnormal? C10a_CONF: [6.0-10.0] C10b: [normal/LA_only/LV_only/RA_only/RV_only/multi_chamber] C10b_CONF: [6.0-10.0]
+
+**FINAL_CHECK:** Review findings C6-C10. Are they consistent with the overall cardiac size assessment? If C1-C5 suggest cardiomegaly, do the chamber findings support this? State [Consistent/Inconsistent] and briefly explain.
+
+OUTPUT FORMAT:
+C6_EVIDENCE: [description]
+C6a:[Y/N] C6a_CONF: [6.0-10.0] C6b:[descriptor] C6b_CONF: [6.0-10.0]
+C7_EVIDENCE: [description]
+C7a:[Y/N] C7a_CONF: [6.0-10.0] C7b:[descriptor] C7b_CONF: [6.0-10.0]
+C8_EVIDENCE: [description]
+C8a:[Y/N] C8a_CONF: [6.0-10.0] C8b:[descriptor] C8b_CONF: [6.0-10.0]
+C9_EVIDENCE: [description]
+C9a:[Y/N] C9a_CONF: [6.0-10.0] C9b:[descriptor] C9b_CONF: [6.0-10.0]
+C10_EVIDENCE: [description]
+C10a:[Y/N] C10a_CONF: [6.0-10.0] C10b:[descriptor] C10b_CONF: [6.0-10.0]
+FINAL_CHECK: [Consistent/Inconsistent - explanation]"""
+
+    elif call_number == 3:
+        return f"""You are an expert radiologist's most technologically advanced medical tool. The radiologist uses you to do deeper scans of x-rays to see if you find anything slightly different than them. You are simply adding some additional context to a busy radiologist's workflow.
+
+Your primary focus is **patient safety**. Your principle is "First, do no harm." Report **only what is clearly visible**.
+
+{scaling_info}
+
+Only report findings that are directly visible on the image. If you do not see clear evidence of a feature, answer 'No.' Do not infer or imagine any pathology.
+
+For each assessment below, first provide visual evidence, then classify based only on that evidence:
+
+**C11: Right Heart Border Assessment**
+**C11_EVIDENCE:** Describe the visible definition of the right heart border. If border appears sharp, state "Right heart border appears sharp."
+
+**C11_FINDING:** Based *only* on evidence above:
+C11a: [Y/N] - Is the right heart border abnormally blurred? C11a_CONF: [6.0-10.0] C11b: [sharp/mildly_blurred/moderately_blurred/severely_blurred/silhouette_sign] C11b_CONF: [6.0-10.0]
+
+**C12: Left Heart Border Assessment**
+**C12_EVIDENCE:** Describe the visible definition of the left heart border. If border appears sharp, state "Left heart border appears sharp."
+
+**C12_FINDING:** Based *only* on evidence above:
+C12a: [Y/N] - Is the left heart border abnormally blurred? C12a_CONF: [6.0-10.0] C12b: [sharp/mildly_blurred/moderately_blurred/severely_blurred/silhouette_sign] C12b_CONF: [6.0-10.0]
+
+**C13: Vascular Pedicle Width Assessment**
+**C13_EVIDENCE:** Describe the vascular pedicle (superior mediastinum) width characteristics. Compare to the cardiac silhouette width and consider in context of any fluid overload or CHF patterns. Look for widening that may suggest volume overload.
+
+**C13_FINDING:** Based *only* on evidence above:
+C13a: [Y/N] - Is the vascular pedicle width abnormal? C13a_CONF: [6.0-10.0] C13b: [normal/borderline/wide/very_wide] C13b_CONF: [6.0-10.0]
+
+**C14: Pericardial Calcification Assessment**
+**C14_EVIDENCE:** Describe any visible evidence of pericardial calcification (rim of calcification around heart). If no calcification seen, state "No visible pericardial calcification."
+
+**C14_FINDING:** Based *only* on evidence above:
+C14a: [Y/N] - Is pericardial calcification present? C14a_CONF: [6.0-10.0] C14b: [none/focal/rim_like/constrictive] C14b_CONF: [6.0-10.0]
+
+**C15: Cardiac Fat Pad Assessment**
+**C15_EVIDENCE:** Describe any visible evidence of abnormal cardiac fat pads. If fat pads appear normal, state "Cardiac fat pads appear normal."
+
+**C15_FINDING:** Based *only* on evidence above:
+C15a: [Y/N] - Do the cardiac fat pads appear abnormal? C15a_CONF: [6.0-10.0] C15b: [normal/prominent/absent/asymmetric] C15b_CONF: [6.0-10.0]
+
+**FINAL_CHECK:** Review findings C11-C15. Are they consistent with a single clinical picture? State [Consistent/Inconsistent] and briefly explain.
+
+OUTPUT FORMAT:
+C11_EVIDENCE: [description]
+C11a:[Y/N] C11a_CONF: [6.0-10.0] C11b:[descriptor] C11b_CONF: [6.0-10.0]
+C12_EVIDENCE: [description]
+C12a:[Y/N] C12a_CONF: [6.0-10.0] C12b:[descriptor] C12b_CONF: [6.0-10.0]
+C13_EVIDENCE: [description]
+C13a:[Y/N] C13a_CONF: [6.0-10.0] C13b:[descriptor] C13b_CONF: [6.0-10.0]
+C14_EVIDENCE: [description]
+C14a:[Y/N] C14a_CONF: [6.0-10.0] C14b:[descriptor] C14b_CONF: [6.0-10.0]
+C15_EVIDENCE: [description]
+C15a:[Y/N] C15a_CONF: [6.0-10.0] C15b:[descriptor] C15b_CONF: [6.0-10.0]
+FINAL_CHECK: [Consistent/Inconsistent - explanation]"""
+
+    elif call_number == 4:
+        return f"""You are an expert radiologist's most technologically advanced medical tool. The radiologist uses you to do deeper scans of x-rays to see if you find anything slightly different than them. You are simply adding some additional context to a busy radiologist's workflow.
+
+Your primary focus is **patient safety**. Your principle is "First, do no harm." Report **only what is clearly visible**.
+
+{scaling_info}
+
+Only report findings that are directly visible on the image. If you do not see clear evidence of a feature, answer 'No.' Do not infer or imagine any pathology.
+
+For each assessment below, first provide visual evidence, then classify based only on that evidence:
+
+**C16: Aortic Knob Assessment**
+**C16_EVIDENCE:** Describe the visible aortic knob size and prominence. If appears normal, state "Aortic knob appears normal."
+
+**C16_FINDING:** Based *only* on evidence above:
+C16a: [Y/N] - Does the aortic knob appear abnormal? C16a_CONF: [6.0-10.0] C16b: [normal/prominent/enlarged/aneurysmal/invisible] C16b_CONF: [6.0-10.0]
+
+**C17: Aortic Arch Contour Assessment**
+**C17_EVIDENCE:** Describe the visible aortic arch contour and configuration. If appears normal, state "Aortic arch contour appears normal."
+
+**C17_FINDING:** Based *only* on evidence above:
+C17a: [Y/N] - Does the aortic arch contour appear abnormal? C17a_CONF: [6.0-10.0] C17b: [normal/unfolded/tortuous/calcified/double_arch] C17b_CONF: [6.0-10.0]
+
+**C18: Mediastinal Width Assessment**
+**C18_EVIDENCE:** Describe the superior mediastinal width and contour characteristics. Consider whether widening is consistent with vascular pedicle findings or suggests fluid overload. Compare to expected normal mediastinal proportions.
+
+**C18_FINDING:** Based *only* on evidence above:
+C18a: [Y/N] - Is the mediastinal width abnormal? C18a_CONF: [6.0-10.0] C18b: [normal/widened/narrow/mass_effect] C18b_CONF: [6.0-10.0]
+
+**C19: Pulmonary Artery Assessment**
+**C19_EVIDENCE:** Describe the main pulmonary artery segment characteristics. Look for convexity, prominence, or dilatation that may suggest pulmonary hypertension. Compare to expected normal pulmonary artery contour.
+
+**C19_FINDING:** Based *only* on evidence above:
+C19a: [Y/N] - Does the pulmonary artery appear abnormal? C19a_CONF: [6.0-10.0] C19b: [normal/enlarged/prominent/pruned/calcified] C19b_CONF: [6.0-10.0]
+
+**C20: Azygos Vein Assessment**
+**C20_EVIDENCE:** Describe the visible azygos vein size. If appears normal, state "Azygos vein appears normal."
+
+**C20_FINDING:** Based *only* on evidence above:
+C20a: [Y/N] - Does the azygos vein appear abnormal? C20a_CONF: [6.0-10.0] C20b: [normal/enlarged/invisible] C20b_CONF: [6.0-10.0]
+
+**FINAL_CHECK:** Review findings C16-C20. Are they consistent with the cardiac and pulmonary vascular findings? If there's cardiomegaly or vascular congestion, do the great vessel findings support this pattern? State [Consistent/Inconsistent] and briefly explain.
+
+OUTPUT FORMAT:
+C16_EVIDENCE: [description]
+C16a:[Y/N] C16a_CONF: [6.0-10.0] C16b:[descriptor] C16b_CONF: [6.0-10.0]
+C17_EVIDENCE: [description]
+C17a:[Y/N] C17a_CONF: [6.0-10.0] C17b:[descriptor] C17b_CONF: [6.0-10.0]
+C18_EVIDENCE: [description]
+C18a:[Y/N] C18a_CONF: [6.0-10.0] C18b:[descriptor] C18b_CONF: [6.0-10.0]
+C19_EVIDENCE: [description]
+C19a:[Y/N] C19a_CONF: [6.0-10.0] C19b:[descriptor] C19b_CONF: [6.0-10.0]
+C20_EVIDENCE: [description]
+C20a:[Y/N] C20a_CONF: [6.0-10.0] C20b:[descriptor] C20b_CONF: [6.0-10.0]
+FINAL_CHECK: [Consistent/Inconsistent - explanation]"""
+
+    elif call_number == 5:
+        return f"""You are an expert radiologist's most technologically advanced medical tool. The radiologist uses you to do deeper scans of x-rays to see if you find anything slightly different than them. You are simply adding some additional context to a busy radiologist's workflow.
+
+Your primary focus is **patient safety**. Your principle is "First, do no harm." Report **only what is clearly visible**.
+
+{scaling_info}
+
+Only report findings that are directly visible on the image. If you do not see clear evidence of a feature, answer 'No.' Do not infer or imagine any pathology.
+
+For each assessment below, first provide visual evidence, then classify based only on that evidence:
+
+**C21: Cardiac Device Assessment**
+**C21_EVIDENCE:** Describe any visible evidence of cardiac devices (pacemaker leads, ICD, etc.). If no devices seen, state "No visible cardiac devices."
+
+**C21_FINDING:** Based *only* on evidence above:
+C21a: [Y/N] - Are cardiac devices present? C21a_CONF: [6.0-10.0] C21b: [none/pacemaker/ICD/valve/LVAD/multiple] C21b_CONF: [6.0-10.0]
+
+**C22: Surgical Changes Assessment**
+**C22_EVIDENCE:** Describe any visible evidence of surgical changes (sternotomy wires, clips). If no changes seen, state "No visible surgical changes."
+
+**C22_FINDING:** Based *only* on evidence above:
+C22a: [Y/N] - Are surgical changes present? C22a_CONF: [6.0-10.0] C22b: [none/CABG/valve_surgery/transplant/pericardial_window] C22b_CONF: [6.0-10.0]
+
+**C23: Cardiac-Lung Interface Assessment**
+**C23_EVIDENCE:** Describe the visible cardiac-lung interface and any CHF patterns. If interface appears normal, state "Cardiac-lung interface appears normal."
+
+**C23_FINDING:** Based *only* on evidence above:
+C23a: [Y/N] - Does the cardiac-lung interface appear abnormal? C23a_CONF: [6.0-10.0] C23b: [normal/CHF_pattern/vascular_congestion/clear] C23b_CONF: [6.0-10.0]
+
+**C24: Cardiac Valve Calcification Assessment**
+**C24_EVIDENCE:** Examine the cardiac silhouette for any visible calcification in the valve regions. Look specifically at the aortic valve area (right side of mediastinum) and mitral valve area for dense calcific deposits. If no calcification seen, state "No visible valve calcification."
+
+**C24_FINDING:** Based *only* on evidence above:
+C24a: [Y/N] - Is cardiac valve calcification present? C24a_CONF: [6.0-10.0] C24b: [none/aortic_valve/mitral_valve/multiple_valves/annular] C24b_CONF: [6.0-10.0]
+
+**C25: Pericardial Effusion Assessment**
+**C25_EVIDENCE:** Examine the cardiac silhouette shape and size for evidence of pericardial effusion. Look for the characteristic "water bottle" heart shape, enlarged cardiac silhouette with smooth borders, or rapid change in cardiac size. If heart shape appears normal, state "No evidence of pericardial effusion."
+
+**C25_FINDING:** Based *only* on evidence above:
+C25a: [Y/N] - Is pericardial effusion present? C25a_CONF: [6.0-10.0] C25b: [none/small_effusion/moderate_effusion/large_effusion/tamponade_shape] C25b_CONF: [6.0-10.0]
+
+**FINAL_CHECK:** Review findings C21-C25. Are they consistent with a single clinical picture? State [Consistent/Inconsistent] and briefly explain.
+
+OUTPUT FORMAT:
+C21_EVIDENCE: [description]
+C21a:[Y/N] C21a_CONF: [6.0-10.0] C21b:[descriptor] C21b_CONF: [6.0-10.0]
+C22_EVIDENCE: [description]
+C22a:[Y/N] C22a_CONF: [6.0-10.0] C22b:[descriptor] C22b_CONF: [6.0-10.0]
+C23_EVIDENCE: [description]
+C23a:[Y/N] C23a_CONF: [6.0-10.0] C23b:[descriptor] C23b_CONF: [6.0-10.0]
+C24_EVIDENCE: [description]
+C24a:[Y/N] C24a_CONF: [6.0-10.0] C24b:[descriptor] C24b_CONF: [6.0-10.0]
+C25_EVIDENCE: [description]
+C25a:[Y/N] C25a_CONF: [6.0-10.0] C25b:[descriptor] C25b_CONF: [6.0-10.0]
+FINAL_CHECK: [Consistent/Inconsistent - explanation]"""
+
+    else:
+        raise ValueError(f"Invalid call number: {call_number}. Must be 1-5.")
+
+if __name__ == "__main__":
+    # Test the prompts
+    scaling_info = "Test scaling info"
+    for i in range(1, 6):
+        print(f"\n=== CARDIAC CALL {i} ===")
+        print(get_cardiac_prompt(i, scaling_info))
